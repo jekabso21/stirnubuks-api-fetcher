@@ -1,23 +1,35 @@
 from .base import BaseAPIHandler
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 import requests
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import json
 
 class StartListAPI(BaseAPIHandler):
     BASE_URL = "https://www.stirnubuks.lv/api/"
-    AUTH_TOKEN = ""
     
-    def __init__(self, posms: str, distance: str, test_mode: bool = False):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False):
         super().__init__()
         self.posms = posms
-        self.distance = distance
+        self.distances = distances  # Now accepts a list of distances
+        self.AUTH_TOKEN = auth_token
         self.test_mode = test_mode
         
-    def fetch_data(self) -> List[Dict[str, Any]]:
+    def _translate_gender(self, dzimums: str) -> str:
+        """Translate gender code to full Latvian words"""
+        gender_map = {
+            'S': 'Sievietes',
+            'V': 'Vīrieši'
+        }
+        return gender_map.get(dzimums, dzimums)
+    
+    def _fetch_single_distance(self, distance: str) -> Tuple[str, List[Dict[str, Any]]]:
+        """Fetch data for a single distance"""
         params = {
             "module": "results_startlist",
             "auth_token": self.AUTH_TOKEN,
-            "distance": self.distance,
+            "distance": distance,
             "posms": self.posms
         }
         
@@ -27,77 +39,79 @@ class StartListAPI(BaseAPIHandler):
         try:
             response = requests.get(self.BASE_URL, params=params)
             response.raise_for_status()
-            return response.json()
+            return distance, response.json()
         except Exception as e:
-            self.logger.error(f"Error fetching data: {str(e)}")
-            return []
+            self.logger.error(f"Error fetching data for distance {distance}: {str(e)}")
+            return distance, []
+
+    def fetch_data(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Fetch data for all distances concurrently"""
+        all_data = {}
+        
+        # Use ThreadPoolExecutor for concurrent API calls
+        with ThreadPoolExecutor(max_workers=min(len(self.distances), 10)) as executor:
+            # Submit all fetch tasks
+            future_to_distance = {
+                executor.submit(self._fetch_single_distance, distance): distance 
+                for distance in self.distances
+            }
             
-    def process_data(self, data: List[Dict[str, Any]]) -> None:
-        if not data:
+            # Process results as they complete
+            for future in as_completed(future_to_distance):
+                distance, data = future.result()
+                if data:  # Only add if we got valid data
+                    all_data[distance] = data
+        
+        return all_data
+
+    def process_data(self, all_data: Dict[str, List[Dict[str, Any]]]) -> None:
+        """Process all fetched data into the required format"""
+        if not all_data:
             self.logger.warning("No data to process")
             return
 
-        # Process and save teams data
-        teams_data = self._group_by_team(data)
-        self.save_json(teams_data, "teams_startlist.json")
+        processed_data = {}
+        
+        # Process each distance's data
+        for distance, participants in all_data.items():
+            processed_data[distance] = []
+            
+            # Process each participant
+            for participant in participants:
+                # Get punkti value directly without any conversion
+                punkti = participant.get('punkti', '')
+                
+                # Create participant data structure
+                processed_participant = {
+                    'image': "",  # Empty for now as specified
+                    'gender': self._translate_gender(participant.get('dzimums', '')),
+                    'number1': str(participant.get('dal_id', '')),
+                    'Name1': participant.get('full_name', ''),
+                    'subgroup': participant.get('grupa', ''),
+                    'Number2': punkti  # Use punkti value directly without any modification
+                }
+                
+                # Debug print before adding to list
+                print(f"Final participant structure: {processed_participant}")
+                
+                processed_data[distance].append(processed_participant)
 
-        # Process and save subteams data
-        subteams_data = self._group_by_subteam(data)
-        self.save_json(subteams_data, "subteams_startlist.json")
+        # Debug print final structure before saving
+        print(f"\nFinal data structure sample:")
+        for distance in processed_data:
+            print(f"{distance}: {processed_data[distance][:1]}")
         
-    def _translate_gender(self, dzimums: str) -> str:
-        """
-        Translate gender code to full Latvian words
-        S -> Sievietes (Women)
-        V -> Vīrieši (Men)
-        """
-        gender_map = {
-            'S': 'Sievietes',
-            'V': 'Vīrieši'
-        }
-        return gender_map.get(dzimums, dzimums)
-        
-    def _group_by_team(self, participants: List[Dict[str, Any]]) -> Dict[str, Any]:
-        teams = {}
-        
-        for participant in participants:
-            team_name = participant.get('komanda', 'Unknown Team')
+        # Save all data to a single JSON file
+        try:
+            self.save_json(processed_data, "all_participants.json")
             
-            if team_name not in teams:
-                teams[team_name] = []
-                
-            participant_data = {
-                'image_path': participant.get('image_path', ''),
-                'gender': self._translate_gender(participant.get('dzimums', '')),
-                'dal_id': participant.get('dal_id', ''),
-                'full_name': participant.get('full_name', ''),
-                'grupa': participant.get('grupa', ''),
-                'punkti': participant.get('punkti', 0)
-            }
-            
-            teams[team_name].append(participant_data)
-            
-        return teams
-        
-    def _group_by_subteam(self, participants: List[Dict[str, Any]]) -> Dict[str, Any]:
-        subteams = {}
-        
-        for participant in participants:
-            subteam_name = participant.get('grupa', 'Unknown Subteam')
-            
-            if subteam_name not in subteams:
-                subteams[subteam_name] = []
-                
-            participant_data = {
-                'group': participant.get('komanda', ''),
-                'image_path': participant.get('image_path', ''),
-                'gender': self._translate_gender(participant.get('dzimums', '')),
-                'dal_id': participant.get('dal_id', ''),
-                'full_name': participant.get('full_name', ''),
-                'komanda': participant.get('komanda', ''),
-                'punkti': participant.get('punkti', 0)
-            }
-            
-            subteams[subteam_name].append(participant_data)
-            
-        return subteams
+            # Verify saved data
+            filepath = os.path.join(self.output_dir, "all_participants.json")
+            with open(filepath, 'r', encoding='utf-8') as f:
+                saved_data = json.load(f)
+                print("\nVerification of saved data:")
+                for distance in saved_data:
+                    if saved_data[distance]:
+                        print(f"{distance} first entry Number2: {saved_data[distance][0]['Number2']}")
+        except Exception as e:
+            self.logger.error(f"Error in save/verify process: {str(e)}")
