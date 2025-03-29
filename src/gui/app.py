@@ -38,8 +38,20 @@ class App:
         self._create_widgets()
         
     def _create_widgets(self):
-        # Main container
-        main_container = ttk.Frame(self.root, padding="10")
+        # Create notebook for tabs
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Main tab
+        main_tab = ttk.Frame(self.notebook)
+        self.notebook.add(main_tab, text="Main")
+
+        # Group Config tab
+        config_tab = ttk.Frame(self.notebook)
+        self.notebook.add(config_tab, text="Group Config")
+
+        # Main container for main tab
+        main_container = ttk.Frame(main_tab, padding="10")
         main_container.pack(fill=tk.BOTH, expand=True)
 
         # Parameters Frame
@@ -137,6 +149,78 @@ class App:
         self.results_text = tk.Text(results_frame, wrap=tk.WORD)
         self.results_text.pack(fill="both", expand=True)
 
+        # Group Config tab content
+        config_container = ttk.Frame(config_tab, padding="10")
+        config_container.pack(fill=tk.BOTH, expand=True)
+
+        # Group configurations frame
+        group_frame = ttk.LabelFrame(config_container, text="Group Configurations", padding=10)
+        group_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        # Create scrollable frame for group configs
+        canvas = tk.Canvas(group_frame)
+        scrollbar = ttk.Scrollbar(group_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Store group config entries
+        self.group_config_entries = {}
+
+        # Create entries for each possible group
+        row = 0
+        for distance in self.DISTANCES:
+            for gender in ['Vīrieši', 'Sievietes']:
+                group_key = f"{distance}_{gender}"
+                group_frame = ttk.LabelFrame(scrollable_frame, text=f"{self.DISTANCES[distance]} - {gender}", padding=5)
+                group_frame.pack(fill="x", pady=2)
+
+                # Group name entry
+                ttk.Label(group_frame, text="Group Name:").grid(row=0, column=0, padx=5, pady=2)
+                name_var = tk.StringVar(value=group_key)
+                name_entry = ttk.Entry(group_frame, textvariable=name_var, width=30)
+                name_entry.grid(row=0, column=1, padx=5, pady=2)
+
+                # Image link entry
+                ttk.Label(group_frame, text="Image Link:").grid(row=1, column=0, padx=5, pady=2)
+                image_var = tk.StringVar()
+                image_entry = ttk.Entry(group_frame, textvariable=image_var, width=30)
+                image_entry.grid(row=1, column=1, padx=5, pady=2)
+
+                self.group_config_entries[group_key] = {
+                    'name': name_var,
+                    'image': image_var
+                }
+                row += 1
+
+        # Save button
+        save_button = ttk.Button(config_container, text="Save Configurations", command=self._save_group_configs)
+        save_button.pack(pady=10)
+
+    def _save_group_configs(self):
+        """Save group configurations and update the API"""
+        group_configs = {}
+        for group_key, entries in self.group_config_entries.items():
+            if entries['name'].get() or entries['image'].get():
+                group_configs[group_key] = {
+                    'name': entries['name'].get(),
+                    'image_link': entries['image'].get()
+                }
+        
+        # Store the configurations
+        self.group_configs = group_configs
+        self.status_label.config(text="Group configurations saved", foreground="green")
+
     def _fetch_data(self):
         # Get selected values
         posms = self.posms_var.get()
@@ -151,8 +235,14 @@ class App:
         # Reset results text
         self.results_text.delete(1.0, tk.END)
         
-        # Create API instance with all selected distances
-        api = StartListAPI(posms, selected_distances, auth_token, self.test_mode_var.get())
+        # Create API instance with all selected distances and group configs
+        api = StartListAPI(
+            posms, 
+            selected_distances, 
+            auth_token, 
+            self.test_mode_var.get(),
+            self.group_configs
+        )
         
         try:
             # Fetch all data

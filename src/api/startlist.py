@@ -9,12 +9,13 @@ import json
 class StartListAPI(BaseAPIHandler):
     BASE_URL = "https://www.stirnubuks.lv/api/"
     
-    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
         super().__init__()
         self.posms = posms
         self.distances = distances  # Now accepts a list of distances
         self.AUTH_TOKEN = auth_token
         self.test_mode = test_mode
+        self.group_configs = group_configs or {}  # Dictionary to store custom group names and image links
         
     def _translate_gender(self, dzimums: str) -> str:
         """Translate gender code to full Latvian words"""
@@ -70,48 +71,52 @@ class StartListAPI(BaseAPIHandler):
             self.logger.warning("No data to process")
             return
 
-        processed_data = {}
+        result = []
         
         # Process each distance's data
         for distance, participants in all_data.items():
-            processed_data[distance] = []
-            
-            # Process each participant
+            # First, group participants by gender
+            gender_groups = {}
             for participant in participants:
-                # Get punkti value directly without any conversion
-                punkti = participant.get('punkti', '')
+                gender = self._translate_gender(participant.get('dzimums', ''))
+                if gender not in gender_groups:
+                    gender_groups[gender] = []
+                gender_groups[gender].append(participant)
+
+            # Create one entry for each distance+gender combination
+            for gender, gender_participants in gender_groups.items():
+                # Get custom group name and image link from config if available
+                group_key = str(f"{distance}_{gender}")
+                group_config = self.group_configs.get(group_key, {})
+                custom_name = group_config.get('name', group_key)
+                image_link = group_config.get('image_link', '')
                 
-                # Create participant data structure
-                processed_participant = {
-                    'image': "",  # Empty for now as specified
-                    'gender': self._translate_gender(participant.get('dzimums', '')),
-                    'number1': str(participant.get('dal_id', '')),
-                    'Name1': participant.get('full_name', ''),
-                    'subgroup': participant.get('grupa', ''),
-                    'Number2': punkti  # Use punkti value directly without any modification
+                # Create a single object for all participants in this distance+gender
+                group_data = {
+                    'group': custom_name,
+                    'gender': gender
                 }
                 
-                # Debug print before adding to list
-                print(f"Final participant structure: {processed_participant}")
+                # Add up to 30 participants
+                for i in range(1, 31):
+                    if i <= len(gender_participants):
+                        participant = gender_participants[i-1]
+                        group_data[f'name{i}'] = str(participant.get('full_name', ''))
+                        group_data[f'image{i}'] = image_link
+                        group_data[f'points{i}'] = str(participant.get('punkti', ''))
+                    else:
+                        # Fill empty slots if we don't have enough participants
+                        group_data[f'name{i}'] = ''
+                        group_data[f'image{i}'] = image_link
+                        group_data[f'points{i}'] = ''
                 
-                processed_data[distance].append(processed_participant)
+                result.append(group_data)
 
-        # Debug print final structure before saving
-        print(f"\nFinal data structure sample:")
-        for distance in processed_data:
-            print(f"{distance}: {processed_data[distance][:1]}")
-        
-        # Save all data to a single JSON file
         try:
-            self.save_json(processed_data, "all_participants.json")
-            
-            # Verify saved data
+            os.makedirs(self.output_dir, exist_ok=True)
             filepath = os.path.join(self.output_dir, "all_participants.json")
-            with open(filepath, 'r', encoding='utf-8') as f:
-                saved_data = json.load(f)
-                print("\nVerification of saved data:")
-                for distance in saved_data:
-                    if saved_data[distance]:
-                        print(f"{distance} first entry Number2: {saved_data[distance][0]['Number2']}")
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump({"teams": result}, f, ensure_ascii=False, indent=2)
+            
         except Exception as e:
             self.logger.error(f"Error in save/verify process: {str(e)}")
