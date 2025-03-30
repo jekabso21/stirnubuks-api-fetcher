@@ -35,6 +35,13 @@ class App:
         # Initialize distances_vars
         self.distances_vars = {key: tk.BooleanVar() for key in self.DISTANCES.keys()}
         
+        # Initialize group configs
+        self.group_configs = {}
+        
+        # Create presets directory if it doesn't exist
+        self.presets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'presets')
+        os.makedirs(self.presets_dir, exist_ok=True)
+        
         self._create_widgets()
         
     def _create_widgets(self):
@@ -153,6 +160,19 @@ class App:
         config_container = ttk.Frame(config_tab, padding="10")
         config_container.pack(fill=tk.BOTH, expand=True)
 
+        # Preset controls frame
+        preset_frame = ttk.LabelFrame(config_container, text="Preset Controls", padding=10)
+        preset_frame.pack(fill="x", pady=5)
+
+        # Preset name entry
+        ttk.Label(preset_frame, text="Preset Name:").pack(side=tk.LEFT, padx=5)
+        self.preset_name_var = tk.StringVar()
+        ttk.Entry(preset_frame, textvariable=self.preset_name_var, width=20).pack(side=tk.LEFT, padx=5)
+
+        # Preset buttons
+        ttk.Button(preset_frame, text="Save Preset", command=self._save_preset).pack(side=tk.LEFT, padx=5)
+        ttk.Button(preset_frame, text="Load Preset", command=self._load_preset).pack(side=tk.LEFT, padx=5)
+
         # Group configurations frame
         group_frame = ttk.LabelFrame(config_container, text="Group Configurations", padding=10)
         group_frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -191,21 +211,108 @@ class App:
                 name_entry = ttk.Entry(group_frame, textvariable=name_var, width=30)
                 name_entry.grid(row=0, column=1, padx=5, pady=2)
 
-                # Image link entry
-                ttk.Label(group_frame, text="Image Link:").grid(row=1, column=0, padx=5, pady=2)
+                # Image selection frame
+                image_frame = ttk.Frame(group_frame)
+                image_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=2)
+                
+                ttk.Label(image_frame, text="Image:").pack(side=tk.LEFT)
                 image_var = tk.StringVar()
-                image_entry = ttk.Entry(group_frame, textvariable=image_var, width=30)
-                image_entry.grid(row=1, column=1, padx=5, pady=2)
+                image_entry = ttk.Entry(image_frame, textvariable=image_var, width=30)
+                image_entry.pack(side=tk.LEFT, padx=5)
+                
+                # Add radio buttons for image type
+                image_type_var = tk.StringVar(value="web")
+                ttk.Radiobutton(image_frame, text="Web Link", variable=image_type_var, value="web").pack(side=tk.LEFT)
+                ttk.Radiobutton(image_frame, text="Local File", variable=image_type_var, value="local").pack(side=tk.LEFT)
+                
+                # Browse button
+                ttk.Button(
+                    image_frame, 
+                    text="Browse", 
+                    command=lambda var=image_var, type_var=image_type_var: self._browse_image(var, type_var)
+                ).pack(side=tk.LEFT)
 
                 self.group_config_entries[group_key] = {
                     'name': name_var,
-                    'image': image_var
+                    'image': image_var,
+                    'image_type': image_type_var
                 }
                 row += 1
 
         # Save button
         save_button = ttk.Button(config_container, text="Save Configurations", command=self._save_group_configs)
         save_button.pack(pady=10)
+
+    def _browse_image(self, image_var, type_var):
+        """Open file dialog to select an image file or handle web link"""
+        if type_var.get() == "local":
+            from tkinter import filedialog
+            filetypes = (
+                ('Image files', '*.png;*.jpg;*.jpeg;*.gif;*.bmp'),
+                ('All files', '*.*')
+            )
+            filename = filedialog.askopenfilename(
+                title='Select an image',
+                filetypes=filetypes
+            )
+            if filename:
+                image_var.set(filename)
+        else:
+            # For web links, just let the user type in the entry field
+            pass
+
+    def _save_preset(self):
+        """Save current configurations as a preset"""
+        preset_name = self.preset_name_var.get().strip()
+        if not preset_name:
+            self.status_label.config(text="Please enter a preset name", foreground="red")
+            return
+
+        preset_data = {}
+        for group_key, entries in self.group_config_entries.items():
+            if entries['name'].get() or entries['image'].get():
+                preset_data[group_key] = {
+                    'name': entries['name'].get(),
+                    'image': entries['image'].get()
+                }
+
+        if not preset_data:
+            self.status_label.config(text="No configurations to save", foreground="red")
+            return
+
+        try:
+            preset_file = os.path.join(self.presets_dir, f"{preset_name}.json")
+            with open(preset_file, 'w', encoding='utf-8') as f:
+                json.dump(preset_data, f, ensure_ascii=False, indent=2)
+            self.status_label.config(text=f"Preset '{preset_name}' saved successfully", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error saving preset: {str(e)}", foreground="red")
+
+    def _load_preset(self):
+        """Load configurations from a preset"""
+        from tkinter import filedialog
+        preset_file = filedialog.askopenfilename(
+            title='Select a preset file',
+            initialdir=self.presets_dir,
+            filetypes=[('JSON files', '*.json')]
+        )
+        
+        if not preset_file:
+            return
+
+        try:
+            with open(preset_file, 'r', encoding='utf-8') as f:
+                preset_data = json.load(f)
+            
+            # Update entries with preset data
+            for group_key, data in preset_data.items():
+                if group_key in self.group_config_entries:
+                    self.group_config_entries[group_key]['name'].set(data.get('name', ''))
+                    self.group_config_entries[group_key]['image'].set(data.get('image', ''))
+            
+            self.status_label.config(text=f"Preset loaded successfully", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error loading preset: {str(e)}", foreground="red")
 
     def _save_group_configs(self):
         """Save group configurations and update the API"""
@@ -214,11 +321,16 @@ class App:
             if entries['name'].get() or entries['image'].get():
                 group_configs[group_key] = {
                     'name': entries['name'].get(),
-                    'image_link': entries['image'].get()
+                    'image': entries['image'].get()
                 }
         
-        # Store the configurations
+        # Store the configurations and update all APIs
         self.group_configs = group_configs
+        
+        # If summary API is running, update its configs
+        if hasattr(self, 'summary_api') and self.summary_api:
+            self.summary_api.group_configs = group_configs
+        
         self.status_label.config(text="Group configurations saved", foreground="green")
 
     def _fetch_data(self):
@@ -298,11 +410,6 @@ class App:
             auth_token = self.auth_key_var.get()
             selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
 
-            print(f"Starting summary updates with:")  # Debug print
-            print(f"Posms: {posms}")  # Debug print
-            print(f"Selected distances: {selected_distances}")  # Debug print
-            print(f"Interval: {interval}")  # Debug print
-
             if not posms or not selected_distances or not auth_token:
                 self.status_label.config(text="Please select Posms, at least one Distance, and enter Auth Key", foreground="red")
                 return
@@ -312,23 +419,19 @@ class App:
                 distances=selected_distances,
                 auth_token=auth_token,
                 update_interval=interval,
-                test_mode=self.test_mode_var.get()
+                test_mode=self.test_mode_var.get(),
+                group_configs=self.group_configs
             )
             
-            print("Created SummaryAPI instance")  # Debug print
             self.summary_api.start_updates()
-            print("Started updates")  # Debug print
-
             self.summary_status_var.set("Running")
             self.start_summary_button.config(state=tk.DISABLED)
             self.stop_summary_button.config(state=tk.NORMAL)
-            self.status_label.config(text=f"Summary updates started - Updating {SummaryAPI.SUMMARY_FILE}", foreground="green")
+            self.status_label.config(text=f"Summary updates started - Updating summary_results.json", foreground="green")
 
         except ValueError as e:
-            print(f"ValueError: {str(e)}")  # Debug print
             self.status_label.config(text=str(e), foreground="red")
         except Exception as e:
-            print(f"Exception in _start_summary_updates: {str(e)}")  # Debug print
             self.status_label.config(text=f"Error starting summary updates: {str(e)}", foreground="red")
 
     def _stop_summary_updates(self):
@@ -345,10 +448,6 @@ class App:
             auth_token = self.auth_key_var.get()
             selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
 
-            print(f"Fetching awarding results with:")
-            print(f"Posms: {posms}")
-            print(f"Selected distances: {selected_distances}")
-
             if not posms or not selected_distances or not auth_token:
                 self.status_label.config(text="Please select Posms, at least one Distance, and enter Auth Key", foreground="red")
                 return
@@ -357,20 +456,17 @@ class App:
                 posms=posms,
                 distances=selected_distances,
                 auth_token=auth_token,
-                test_mode=self.test_mode_var.get()
+                test_mode=self.test_mode_var.get(),
+                group_configs=self.group_configs
             )
             
-            print("Created AwardingAPI instance")
-            all_data = awarding_api.fetch_data()  # Use the new fetch_data method
+            all_data = awarding_api.fetch_data()
 
             if all_data:
-                print("Processing awarding data")
                 awarding_api.process_data(all_data)
-                self.status_label.config(text=f"Awarding results updated in {AwardingAPI.AWARDING_FILE}", foreground="green")
+                self.status_label.config(text=f"Awarding results updated in awarding_results.json", foreground="green")
             else:
-                print("No awarding data received")
                 self.status_label.config(text="No awarding data could be fetched", foreground="red")
 
         except Exception as e:
-            print(f"Exception in _fetch_awarding_results: {str(e)}")
             self.status_label.config(text=f"Error fetching awarding results: {str(e)}", foreground="red")

@@ -2,17 +2,20 @@ from .base import BaseAPIHandler
 from typing import Dict, Any, List, Tuple
 import requests
 import logging
+import os
+import json
 
 class AwardingAPI(BaseAPIHandler):
     BASE_URL = "https://www.stirnubuks.lv/api/"
     AWARDING_FILE = "awarding_results.json"  # Single file for all awarding results
     
-    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
         super().__init__()
         self.posms = posms
         self.distances = distances
         self.AUTH_TOKEN = auth_token
         self.test_mode = test_mode
+        self.group_configs = group_configs or {}
 
     def fetch_data(self) -> Dict[str, Any]:
         """Implementation of abstract method from BaseAPIHandler"""
@@ -55,35 +58,60 @@ class AwardingAPI(BaseAPIHandler):
             return distance, []
 
     def process_data(self, all_data: Dict[str, List[Dict[str, Any]]]) -> None:
+        """Process all fetched data into the required format"""
         if not all_data:
             self.logger.warning("No data to process")
             return
 
-        processed_data = {}
+        result = []
         
+        # Process each distance's data
         for distance, participants in all_data.items():
-            # Group by CourseClass first
-            course_classes = {}
+            # First, group participants by gender
+            gender_groups = {}
             for participant in participants:
-                course_class = participant.get('CourseClass', 'Unknown')
-                gender = participant.get('dzimums', 'Unknown')
+                gender = self._translate_gender(participant.get('dzimums', ''))
+                if gender not in gender_groups:
+                    gender_groups[gender] = []
+                gender_groups[gender].append(participant)
+
+            # Create one entry for each distance+gender combination
+            for gender, gender_participants in gender_groups.items():
+                group_key = str(f"{distance}_{gender}")
+                group_config = self.group_configs.get(group_key, {})
+                custom_name = group_config.get('name', group_key)
+                image_path = group_config.get('image', '')
                 
-                if course_class not in course_classes:
-                    course_classes[course_class] = {'S': [], 'V': []}
-                
-                processed_participant = {
-                    'ImagePath1': "",
-                    'Gender1': self._translate_gender(gender),
-                    'Number1': participant.get('dal_id', ''),
-                    'Name1': participant.get('Name', ''),
-                    'Time1': participant.get('RaceTime', ''),
-                    'Position': participant.get('Position', ''),
-                    'Club': participant.get('Club', '')
+                # Create a single object for all participants in this distance+gender
+                group_data = {
+                    'group': custom_name,
+                    'gender': gender
                 }
                 
-                course_classes[course_class][gender].append(processed_participant)
-            
-            processed_data[distance] = course_classes
+                # Add up to 30 participants
+                for i in range(1, 31):
+                    if i <= len(gender_participants):
+                        print(image_path)
+                        participant = gender_participants[i-1]
+                        group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
+                        group_data[f'image{i}'] = image_path
+                        group_data[f'points{i}'] = str(participant.get('Position', '')) if participant.get('Position') else ''
+                        group_data[f'time{i}'] = str(participant.get('RaceTime', '')) if participant.get('RaceTime') else ''
+                        group_data[f'club{i}'] = str(participant.get('Club', '')) if participant.get('Club') else ''
+                    else:
+                        group_data[f'name{i}'] = ''
+                        group_data[f'image{i}'] = ''  # Empty string for participant images
+                        group_data[f'points{i}'] = ''
+                        group_data[f'time{i}'] = ''
+                        group_data[f'club{i}'] = ''
+                
+                result.append(group_data)
 
-        # Save to single JSON file
-        self.save_json(processed_data, self.AWARDING_FILE) 
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+            filepath = os.path.join(self.output_dir, "awarding_results.json")
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump({"teams": result}, f, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            self.logger.error(f"Error in save/verify process: {str(e)}") 

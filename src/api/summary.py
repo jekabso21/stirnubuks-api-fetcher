@@ -5,11 +5,13 @@ import logging
 from datetime import datetime
 import time
 import threading
+import os
+import json
 
 class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
     BASE_URL = "https://www.stirnubuks.lv/api/"
     
-    def __init__(self, posms: str, distances: List[str], auth_token: str, update_interval: int = 30, test_mode: bool = False):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, update_interval: int = 30, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
         super().__init__()
         self.posms = posms
         self.distances = distances
@@ -18,6 +20,7 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
         self.test_mode = test_mode
         self.is_running = False
         self.thread = None
+        self.group_configs = group_configs or {}
 
     def fetch_data(self) -> Dict[str, Any]:
         """Implementation of abstract method from BaseAPIHandler"""
@@ -60,32 +63,60 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
             return distance, []
 
     def process_data(self, all_data: Dict[str, List[Dict[str, Any]]]) -> None:
+        """Process all fetched data into the required format"""
         if not all_data:
             self.logger.warning("No data to process")
             return
 
-        processed_data = {}
+        result = []
         
+        # Process each distance's data
         for distance, participants in all_data.items():
-            processed_data[distance] = []
-            
+            # First, group participants by gender
+            gender_groups = {}
             for participant in participants:
-                processed_participant = {
-                    'ImagePath1': "",
-                    'Gender1': self._translate_gender(participant.get('dzimums', '')),
-                    'Number1': participant.get('dal_id', ''),
-                    'Name1': participant.get('Name', ''),
-                    'Time1': participant.get('RaceTime', '')
-                }
-                processed_data[distance].append(processed_participant)
+                gender = self._translate_gender(participant.get('dzimums', ''))
+                if gender not in gender_groups:
+                    gender_groups[gender] = []
+                gender_groups[gender].append(participant)
 
-        # Save to JSON file with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"summary_results_{timestamp}.json"
-        self.save_json(processed_data, filename)
-        
-        # Also save to a fixed filename for latest results
-        self.save_json(processed_data, "latest_summary_results.json")
+            # Create one entry for each distance+gender combination
+            for gender, gender_participants in gender_groups.items():
+                group_key = str(f"{distance}_{gender}")
+                group_config = self.group_configs.get(group_key, {})
+                custom_name = group_config.get('name', group_key)
+                image_path = group_config.get('image', '')
+                
+                # Create a single object for all participants in this distance+gender
+                group_data = {
+                    'group': custom_name,
+                    'gender': gender
+                }
+                
+                # Add up to 30 participants
+                for i in range(1, 31):
+                    if i <= len(gender_participants):
+                        print(image_path)
+                        participant = gender_participants[i-1]
+                        group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
+                        group_data[f'image{i}'] = image_path
+                        race_time = participant.get('RaceTime')
+                        group_data[f'points{i}'] = str(race_time) if race_time is not None else ''
+                    else:
+                        group_data[f'name{i}'] = ''
+                        group_data[f'image{i}'] = ''  # Empty string for participant images
+                        group_data[f'points{i}'] = ''
+                
+                result.append(group_data)
+
+        try:
+            os.makedirs(self.output_dir, exist_ok=True)
+            filepath = os.path.join(self.output_dir, "summary_results.json")
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump({"teams": result}, f, ensure_ascii=False, indent=2)
+            
+        except Exception as e:
+            self.logger.error(f"Error in save/verify process: {str(e)}")
 
     def start_updates(self):
         if not self.is_running:

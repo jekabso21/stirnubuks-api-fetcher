@@ -89,7 +89,7 @@ class StartListAPI(BaseAPIHandler):
                 group_key = str(f"{distance}_{gender}")
                 group_config = self.group_configs.get(group_key, {})
                 custom_name = group_config.get('name', group_key)
-                image_link = group_config.get('image_link', '')
+                image_path = group_config.get('image', '')
                 
                 # Create a single object for all participants in this distance+gender
                 group_data = {
@@ -102,13 +102,13 @@ class StartListAPI(BaseAPIHandler):
                     if i <= len(gender_participants):
                         participant = gender_participants[i-1]
                         group_data[f'name{i}'] = str(participant.get('full_name', ''))
-                        group_data[f'image{i}'] = image_link
-                        group_data[f'points{i}'] = str(participant.get('punkti', ''))
+                        group_data[f'image{i}'] = image_path
+                        group_data[f'number{i}'] = str(participant.get('dal_id', ''))
                     else:
                         # Fill empty slots if we don't have enough participants
                         group_data[f'name{i}'] = ''
-                        group_data[f'image{i}'] = image_link
-                        group_data[f'points{i}'] = ''
+                        group_data[f'image{i}'] = ''  # Empty string for participant images
+                        group_data[f'number{i}'] = ''
                 
                 result.append(group_data)
 
