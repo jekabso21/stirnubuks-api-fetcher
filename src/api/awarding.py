@@ -63,55 +63,70 @@ class AwardingAPI(BaseAPIHandler):
             self.logger.warning("No data to process")
             return
 
-        result = []
+        result = {"teams": []}  # Initialize with teams array
         
         # Process each distance's data
         for distance, participants in all_data.items():
-            # First, group participants by gender
-            gender_groups = {}
+            # First group participants by distance and grupa
+            group_categories = {}
             for participant in participants:
                 gender = self._translate_gender(participant.get('dzimums', ''))
-                if gender not in gender_groups:
-                    gender_groups[gender] = []
-                gender_groups[gender].append(participant)
+                grupa = participant.get('grupa', 'Kopvērtējums')
+                
+                category_key = f"{distance}_{grupa}"
+                if category_key not in group_categories:
+                    group_categories[category_key] = {
+                        'Sievietes': [],
+                        'Vīrieši': []
+                    }
+                group_categories[category_key][gender].append(participant)
 
-            # Create one entry for each distance+gender combination
-            for gender, gender_participants in gender_groups.items():
-                group_key = str(f"{distance}_{gender}")
-                group_config = self.group_configs.get(group_key, {})
-                custom_name = group_config.get('name', group_key)
-                image_path = group_config.get('image', '')
+            # Process each category
+            for category_key, gender_groups in group_categories.items():
+                distance_name, grupa = category_key.split('_', 1)
                 
-                # Create a single object for all participants in this distance+gender
-                group_data = {
-                    'group': custom_name,
-                    'gender': gender
-                }
-                
-                # Add up to 30 participants
-                for i in range(1, 31):
-                    if i <= len(gender_participants):
-                        print(image_path)
-                        participant = gender_participants[i-1]
-                        group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
-                        group_data[f'image{i}'] = image_path
-                        group_data[f'points{i}'] = str(participant.get('Position', '')) if participant.get('Position') else ''
-                        group_data[f'time{i}'] = str(participant.get('RaceTime', '')) if participant.get('RaceTime') else ''
-                        group_data[f'club{i}'] = str(participant.get('Club', '')) if participant.get('Club') else ''
-                    else:
-                        group_data[f'name{i}'] = ''
-                        group_data[f'image{i}'] = ''  # Empty string for participant images
-                        group_data[f'points{i}'] = ''
-                        group_data[f'time{i}'] = ''
-                        group_data[f'club{i}'] = ''
-                
-                result.append(group_data)
+                # Process each gender within the category
+                for gender, participants_list in gender_groups.items():
+                    if not participants_list:  # Skip if no participants
+                        continue
+                    
+                    # Sort participants by race time
+                    sorted_participants = sorted(
+                        participants_list,
+                        key=lambda x: float(x.get('RaceTime', '999999')) if x.get('RaceTime') and x.get('RaceTime').replace('.','',1).isdigit() else float('inf')
+                    )
+
+                    group_config = self.group_configs.get(category_key, {})
+                    base_name = group_config.get('name', distance)
+                    
+                    # Create category entry
+                    category_data = {
+                        'grupa': grupa,  # Use grupa directly as specified in your JSON
+                        'gender': gender
+                    }
+
+                    # Add top 3 participants
+                    for i in range(1, 4):
+                        if i <= len(sorted_participants):
+                            participant = sorted_participants[i-1]
+                            category_data[f'name{i}'] = str(participant.get('Name', ''))
+                            category_data[f'image{i}'] = ''  # Empty string for image as shown in your JSON
+                            category_data[f'time{i}'] = str(participant.get('RaceTime', ''))
+                            category_data[f'number{i}'] = str(participant.get('dal_id', ''))
+                        else:
+                            category_data[f'name{i}'] = ''
+                            category_data[f'image{i}'] = ''
+                            category_data[f'time{i}'] = ''
+                            category_data[f'number{i}'] = ''
+
+                    # Append to teams array
+                    result['teams'].append(category_data)
 
         try:
             os.makedirs(self.output_dir, exist_ok=True)
-            filepath = os.path.join(self.output_dir, "awarding_results.json")
+            filepath = os.path.join(self.output_dir, self.AWARDING_FILE)
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump({"teams": result}, f, ensure_ascii=False, indent=2)
+                json.dump(result, f, ensure_ascii=False, indent=2)
             
         except Exception as e:
             self.logger.error(f"Error in save/verify process: {str(e)}") 
