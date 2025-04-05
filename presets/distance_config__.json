@@ -1,0 +1,42 @@
+{
+  "vavere": {
+    "group_by": "classgroups",
+    "top_count": "3"
+  },
+  "zakis": {
+    "group_by": "distance",
+    "top_count": "3"
+  },
+  "susurs": {
+    "group_by": "distance",
+    "top_count": "3"
+  },
+  "pzakis": {
+    "group_by": "distance",
+    "top_count": "3"
+  },
+  "vilks": {
+    "group_by": "distance",
+    "top_count": "3"
+  },
+  "pvavere": {
+    "group_by": "classgroups",
+    "top_count": "3"
+  },
+  "buks": {
+    "group_by": "classgroups",
+    "top_count": "3"
+  },
+  "pbuks": {
+    "group_by": "distance",
+    "top_count": "3"
+  },
+  "skola": {
+    "group_by": "classgroups",
+    "top_count": "3"
+  },
+  "lusis": {
+    "group_by": "distance",
+    "top_count": "3"
+  }
+}

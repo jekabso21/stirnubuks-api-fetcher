@@ -1,0 +1,57 @@
+{
+  "posms": "smeceres",
+  "auth_key": "w70vF2zXyazkBkE9IEGMrJGGQkWCYeqHpo8t8Ydvv4mjK8",
+  "test_mode": true,
+  "update_interval": "30",
+  "selected_distances": {
+    "vavere": true,
+    "zakis": true,
+    "susurs": true,
+    "pzakis": true,
+    "vilks": true,
+    "pvavere": true,
+    "buks": true,
+    "pbuks": true,
+    "skola": true,
+    "lusis": true
+  },
+  "group_configs": {},
+  "distance_configs": {
+    "vavere": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "zakis": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "susurs": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "pzakis": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "vilks": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "pvavere": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "buks": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "pbuks": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "skola": {
+      "group_by": "classgroups",
+      "top_count": 3
+    }
+  }
+}

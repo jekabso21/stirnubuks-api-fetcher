@@ -29,14 +29,16 @@ class App:
             'pvavere': 'Vāvere (pārgājiens)',
             'buks': 'Stirnu buks',
             'pbuks': 'Stirnu buks (pārgājiens)',
-            'skola': 'Skolu čempionāts'
+            'skola': 'Skolu čempionāts',
+            'lusis': 'Lusis'
         }
         
         # Initialize distances_vars
         self.distances_vars = {key: tk.BooleanVar() for key in self.DISTANCES.keys()}
         
-        # Initialize group configs
+        # Initialize group configs and active distance configs
         self.group_configs = {}
+        self.active_distance_configs = {}  # Initialize active_distance_configs
         
         # Create presets directory if it doesn't exist
         self.presets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'presets')
@@ -106,6 +108,19 @@ class App:
         # Test Mode Checkbox
         self.test_mode_var = tk.BooleanVar()
         ttk.Checkbutton(params_frame, text="Test Mode", variable=self.test_mode_var).grid(row=5, column=0, columnspan=2, pady=5)
+
+        # All Settings Frame
+        all_settings_frame = ttk.LabelFrame(main_container, text="Save/Load All Settings", padding=10)
+        all_settings_frame.pack(fill="x", pady=5)
+
+        # Settings name entry
+        ttk.Label(all_settings_frame, text="Settings Name:").pack(side=tk.LEFT, padx=5)
+        self.all_settings_name_var = tk.StringVar()
+        ttk.Entry(all_settings_frame, textvariable=self.all_settings_name_var, width=20).pack(side=tk.LEFT, padx=5)
+
+        # Save/Load buttons
+        ttk.Button(all_settings_frame, text="Save All Settings", command=self._save_all_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(all_settings_frame, text="Load Settings", command=self._load_all_settings).pack(side=tk.LEFT, padx=5)
 
         # Control Buttons Frame
         control_frame = ttk.LabelFrame(main_container, text="Controls", padding=10)
@@ -242,6 +257,81 @@ class App:
         # Save button
         save_button = ttk.Button(config_container, text="Save Configurations", command=self._save_group_configs)
         save_button.pack(pady=10)
+
+        # Add Distance Configuration tab
+        distance_config_tab = ttk.Frame(self.notebook)
+        self.notebook.add(distance_config_tab, text="Distance Config")
+
+        # Distance configuration container
+        config_container = ttk.Frame(distance_config_tab, padding="10")
+        config_container.pack(fill=tk.BOTH, expand=True)
+
+        # Create scrollable frame for configurations
+        canvas = tk.Canvas(config_container)
+        scrollbar = ttk.Scrollbar(config_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Store distance config entries
+        self.distance_configs = {}
+
+        # Create configuration for each distance
+        for distance in self.DISTANCES:
+            frame = ttk.LabelFrame(scrollable_frame, text=f"{self.DISTANCES[distance]}", padding=5)
+            frame.pack(fill="x", pady=5, padx=5)
+
+            # Grouping method
+            ttk.Label(frame, text="Group By:").grid(row=0, column=0, padx=5, pady=2)
+            group_var = tk.StringVar(value="distance")
+            group_combo = ttk.Combobox(
+                frame, 
+                textvariable=group_var,
+                values=["distance", "classgroups"],
+                state="readonly",
+                width=20
+            )
+            group_combo.grid(row=0, column=1, padx=5, pady=2)
+
+            # Top players count
+            ttk.Label(frame, text="Top Players:").grid(row=1, column=0, padx=5, pady=2)
+            top_count_var = tk.StringVar(value="3")
+            top_count_entry = ttk.Entry(frame, textvariable=top_count_var, width=5)
+            top_count_entry.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+
+            # Store the configuration variables
+            self.distance_configs[distance] = {
+                'group_by': group_var,
+                'top_count': top_count_var
+            }
+
+        # Save button
+        save_button = ttk.Button(
+            config_container, 
+            text="Save Distance Configurations", 
+            command=self._save_distance_configs
+        )
+        save_button.pack(pady=10)
+
+        # Preset controls for distance configs
+        preset_frame = ttk.LabelFrame(config_container, text="Distance Config Presets", padding=5)
+        preset_frame.pack(fill="x", pady=5)
+
+        ttk.Label(preset_frame, text="Preset Name:").pack(side=tk.LEFT, padx=5)
+        self.distance_preset_name = tk.StringVar()
+        ttk.Entry(preset_frame, textvariable=self.distance_preset_name, width=20).pack(side=tk.LEFT, padx=5)
+        ttk.Button(preset_frame, text="Save Preset", command=self._save_distance_preset).pack(side=tk.LEFT, padx=5)
+        ttk.Button(preset_frame, text="Load Preset", command=self._load_distance_preset).pack(side=tk.LEFT, padx=5)
 
     def _browse_image(self, image_var, type_var):
         """Open file dialog to select an image file or handle web link"""
@@ -457,7 +547,8 @@ class App:
                 distances=selected_distances,
                 auth_token=auth_token,
                 test_mode=self.test_mode_var.get(),
-                group_configs=self.group_configs
+                group_configs=self.group_configs,
+                distance_configs=self.active_distance_configs
             )
             
             all_data = awarding_api.fetch_data()
@@ -470,3 +561,154 @@ class App:
 
         except Exception as e:
             self.status_label.config(text=f"Error fetching awarding results: {str(e)}", foreground="red")
+
+    def _save_distance_configs(self):
+        """Save distance configurations"""
+        configs = {}
+        for distance, vars in self.distance_configs.items():
+            try:
+                top_count = int(vars['top_count'].get())
+                if top_count < 1:
+                    raise ValueError
+            except ValueError:
+                self.status_label.config(
+                    text=f"Invalid top count for {self.DISTANCES[distance]}", 
+                    foreground="red"
+                )
+                return
+
+            configs[distance] = {
+                'group_by': vars['group_by'].get(),
+                'top_count': top_count,
+                'name': self.DISTANCES[distance]  # Add the distance name from DISTANCES dictionary
+            }
+        
+        self.active_distance_configs = configs  # Update active_distance_configs
+        self.status_label.config(text="Distance configurations saved", foreground="green")
+
+    def _save_distance_preset(self):
+        """Save current distance configurations as a preset"""
+        name = self.distance_preset_name.get().strip()
+        if not name:
+            self.status_label.config(text="Please enter a preset name", foreground="red")
+            return
+
+        configs = {}
+        for distance, vars in self.distance_configs.items():
+            configs[distance] = {
+                'group_by': vars['group_by'].get(),
+                'top_count': vars['top_count'].get()
+            }
+
+        try:
+            preset_file = os.path.join(self.presets_dir, f"distance_config_{name}.json")
+            with open(preset_file, 'w', encoding='utf-8') as f:
+                json.dump(configs, f, ensure_ascii=False, indent=2)
+            self.status_label.config(text=f"Distance config preset '{name}' saved", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error saving preset: {str(e)}", foreground="red")
+
+    def _load_distance_preset(self):
+        """Load distance configurations from a preset"""
+        from tkinter import filedialog
+        preset_file = filedialog.askopenfilename(
+            title='Select a distance config preset',
+            initialdir=self.presets_dir,
+            filetypes=[('JSON files', '*.json')]
+        )
+        
+        if not preset_file:
+            return
+
+        try:
+            with open(preset_file, 'r', encoding='utf-8') as f:
+                configs = json.load(f)
+            
+            for distance, config in configs.items():
+                if distance in self.distance_configs:
+                    self.distance_configs[distance]['group_by'].set(config['group_by'])
+                    self.distance_configs[distance]['top_count'].set(str(config['top_count']))
+            
+            self.status_label.config(text="Distance config preset loaded", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error loading preset: {str(e)}", foreground="red")
+
+    def _save_all_settings(self):
+        """Save all current settings including selections, configs, and parameters"""
+        try:
+            # Get all current settings
+            settings = {
+                'posms': self.posms_var.get(),
+                'auth_key': self.auth_key_var.get(),
+                'test_mode': self.test_mode_var.get(),
+                'update_interval': self.update_interval_var.get(),
+                'selected_distances': {
+                    distance: var.get() 
+                    for distance, var in self.distances_vars.items()
+                },
+                'group_configs': self.group_configs,
+                'distance_configs': self.active_distance_configs
+            }
+
+            # Get settings name
+            name = self.all_settings_name_var.get().strip()
+            if not name:
+                self.status_label.config(text="Please enter a name for the settings", foreground="red")
+                return
+
+            # Save to file
+            settings_file = os.path.join(self.presets_dir, f"all_settings_{name}.json")
+            with open(settings_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+            
+            self.status_label.config(text=f"All settings saved as '{name}'", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error saving settings: {str(e)}", foreground="red")
+
+    def _load_all_settings(self):
+        """Load all settings from a saved file"""
+        from tkinter import filedialog
+        
+        settings_file = filedialog.askopenfilename(
+            title='Select settings file',
+            initialdir=self.presets_dir,
+            filetypes=[('JSON files', '*.json')]
+        )
+        
+        if not settings_file:
+            return
+
+        try:
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+
+            # Apply loaded settings
+            self.posms_var.set(settings.get('posms', ''))
+            self.auth_key_var.set(settings.get('auth_key', ''))
+            self.test_mode_var.set(settings.get('test_mode', False))
+            self.update_interval_var.set(settings.get('update_interval', '30'))
+
+            # Set selected distances
+            for distance, selected in settings.get('selected_distances', {}).items():
+                if distance in self.distances_vars:
+                    self.distances_vars[distance].set(selected)
+
+            # Set group configs
+            self.group_configs = settings.get('group_configs', {})
+            # Update group config entries if they exist
+            for group_key, config in self.group_configs.items():
+                if group_key in self.group_config_entries:
+                    self.group_config_entries[group_key]['name'].set(config.get('name', ''))
+                    self.group_config_entries[group_key]['image'].set(config.get('image', ''))
+
+            # Set distance configs
+            self.active_distance_configs = settings.get('distance_configs', {})
+            # Update distance config entries
+            for distance, config in self.active_distance_configs.items():
+                if distance in self.distance_configs:
+                    self.distance_configs[distance]['group_by'].set(config.get('group_by', 'distance'))
+                    self.distance_configs[distance]['top_count'].set(str(config.get('top_count', 3)))
+
+            self.status_label.config(text="All settings loaded successfully", foreground="green")
+        except Exception as e:
+            self.status_label.config(text=f"Error loading settings: {str(e)}", foreground="red")

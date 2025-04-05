@@ -9,13 +9,14 @@ class AwardingAPI(BaseAPIHandler):
     BASE_URL = "https://www.stirnubuks.lv/api/"
     AWARDING_FILE = "awarding_results.json"  # Single file for all awarding results
     
-    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None, distance_configs: Dict[str, Dict[str, Any]] = None):
         super().__init__()
         self.posms = posms
         self.distances = distances
         self.AUTH_TOKEN = auth_token
         self.test_mode = test_mode
         self.group_configs = group_configs or {}
+        self.distance_configs = distance_configs or {}  # Initialize distance_configs
 
     def fetch_data(self) -> Dict[str, Any]:
         """Implementation of abstract method from BaseAPIHandler"""
@@ -45,17 +46,57 @@ class AwardingAPI(BaseAPIHandler):
             params["gads"] = "2024"
             
         try:
-            print(f"Fetching awarding data for distance {distance}")  # Debug print
-            print(f"URL params: {params}")  # Debug print
+            print(f"\nFetching data for distance: {distance}")
+            print(f"Request parameters: {params}")
             response = requests.get(self.BASE_URL, params=params)
-            print(f"Response status: {response.status_code}")  # Debug print
-            print(f"Response content: {response.text[:200]}")  # Debug print first 200 chars
             response.raise_for_status()
-            return distance, response.json()
+            data = response.json()
+
+            # Check if the data is a list
+            if isinstance(data, list):
+                print(f"Received {len(data)} participants")
+                course_classes = set(p.get('CourseClass', 'Unknown') for p in data)
+                print(f"Found course classes: {', '.join(sorted(course_classes))}")
+                for cc in course_classes:
+                    count = len([p for p in data if p.get('CourseClass') == cc])
+                    print(f"  {cc}: {count} participants")
+                return distance, data
+            else:
+                print(f"Unexpected data format: {type(data)}")
+                return distance, []  # Return an empty list if the format is unexpected
+
         except Exception as e:
             self.logger.error(f"Error fetching awarding data for distance {distance}: {str(e)}")
-            print(f"Error in _fetch_single_distance: {str(e)}")  # Debug print
+            print(f"Error in _fetch_single_distance: {str(e)}")
             return distance, []
+
+    def _parse_course_class(self, course_class: str, participants: List[Dict[str, Any]]) -> Tuple[str, str]:
+        if not course_class:
+            # Check participant genders if course_class is unknown
+            genders = [self._translate_gender(p.get('dzimums', '')) for p in participants[:3]]
+            if len(set(genders)) == 1 and genders[0] in ['Vīrieši', 'Sievietes']:
+                return ('Unknown', genders[0])
+            return ('Unknown', 'Unknown')
+        
+        # Handle U-groups with gender suffix
+        if course_class.startswith('U'):
+            if course_class.endswith('V'):
+                return (course_class[:-1], 'Vīrieši')
+            elif course_class.endswith('S'):
+                return (course_class[:-1], 'Sievietes')
+        
+        # Handle V and S groups
+        if course_class.startswith('V'):
+            return (course_class, 'Vīrieši')
+        elif course_class.startswith('S'):
+            return (course_class, 'Sievietes')
+        
+        # If course_class exists but pattern is unknown, check participant genders
+        genders = [self._translate_gender(p.get('dzimums', '')) for p in participants[:3]]
+        if len(set(genders)) == 1 and genders[0] in ['Vīrieši', 'Sievietes']:
+            return (course_class, genders[0])
+        
+        return (course_class, 'Unknown')
 
     def process_data(self, all_data: Dict[str, List[Dict[str, Any]]]) -> None:
         """Process all fetched data into the required format"""
@@ -63,64 +104,70 @@ class AwardingAPI(BaseAPIHandler):
             self.logger.warning("No data to process")
             return
 
-        result = {"teams": []}  # Initialize with teams array
+        result = {"teams": []}
         
-        # Process each distance's data
         for distance, participants in all_data.items():
-            # First group participants by distance and grupa
-            group_categories = {}
-            for participant in participants:
-                gender = self._translate_gender(participant.get('dzimums', ''))
-                grupa = participant.get('grupa', 'Kopvērtējums')
+            if not participants:
+                continue
+
+            # Get distance configuration
+            distance_config = self.distance_configs.get(distance, {
+                'group_by': 'distance',
+                'top_count': 3
+            })
+            group_by = distance_config['group_by']
+            top_count = distance_config['top_count']
+
+            print(f"\nProcessing {distance} with config: {distance_config}")
+
+            if group_by == "distance":
+                # First, group participants by gender
+                gender_groups = self._group_by_gender(participants)
                 
-                category_key = f"{distance}_{grupa}"
-                if category_key not in group_categories:
-                    group_categories[category_key] = {
-                        'Sievietes': [],
-                        'Vīrieši': []
-                    }
-                group_categories[category_key][gender].append(participant)
+                # Process females first, then males
+                gender_order = ['Sievietes', 'Vīrieši']
+                for gender in gender_order:
+                    if gender in gender_groups:
+                        sorted_participants = self._sort_participants(gender_groups[gender])
+                        # Use the same group key pattern as StartListAPI
+                        group_key = f"{distance}_{gender}"
+                        group_config = self.group_configs.get(group_key, {})
+                        custom_name = group_config.get('name', group_key)  # Fixed: use group_key as default
+                        print(f"Using group key: {group_key}, config: {group_config}, name: {custom_name}")  # Debug print
+                        
+                        result['teams'].append(self._create_group_data(
+                            custom_name,  # Use custom name from group config
+                            gender,  # Just use gender for course class in distance mode
+                            gender,  # Use actual gender
+                            sorted_participants,
+                            top_count,
+                            distance
+                        ))
 
-            # Process each category
-            for category_key, gender_groups in group_categories.items():
-                distance_name, grupa = category_key.split('_', 1)
+            elif group_by == "classgroups":
+                # Group by CourseClass only
+                class_groups = self._group_by_courseclass(participants)
+                # Sort class groups to ensure consistent order
+                sorted_class_groups = sorted(class_groups.items())
                 
-                # Process each gender within the category
-                for gender, participants_list in gender_groups.items():
-                    if not participants_list:  # Skip if no participants
-                        continue
+                for course_class, class_participants in sorted_class_groups:
+                    sorted_participants = self._sort_participants(class_participants)
+                    group, gender = self._parse_course_class(course_class, class_participants)
                     
-                    # Sort participants by race time
-                    sorted_participants = sorted(
-                        participants_list,
-                        key=lambda x: float(x.get('RaceTime', '999999')) if x.get('RaceTime') and x.get('RaceTime').replace('.','',1).isdigit() else float('inf')
-                    )
-
-                    group_config = self.group_configs.get(category_key, {})
-                    base_name = group_config.get('name', distance)
+                    # Use the same group key pattern as StartListAPI for the base distance
+                    group_key = f"{distance}_{gender}"
+                    group_config = self.group_configs.get(group_key, {})
+                    custom_name = group_config.get('name', group_key)  # Fixed: use group_key as default
+                    print(f"Using group key: {group_key}, config: {group_config}, name: {custom_name}")  # Debug print
                     
-                    # Create category entry
-                    category_data = {
-                        'grupa': grupa,  # Use grupa directly as specified in your JSON
-                        'gender': gender
-                    }
-
-                    # Add top 3 participants
-                    for i in range(1, 4):
-                        if i <= len(sorted_participants):
-                            participant = sorted_participants[i-1]
-                            category_data[f'name{i}'] = str(participant.get('Name', ''))
-                            category_data[f'image{i}'] = ''  # Empty string for image as shown in your JSON
-                            category_data[f'time{i}'] = str(participant.get('RaceTime', ''))
-                            category_data[f'number{i}'] = str(participant.get('dal_id', ''))
-                        else:
-                            category_data[f'name{i}'] = ''
-                            category_data[f'image{i}'] = ''
-                            category_data[f'time{i}'] = ''
-                            category_data[f'number{i}'] = ''
-
-                    # Append to teams array
-                    result['teams'].append(category_data)
+                    result['teams'].append(self._create_group_data(
+                        custom_name,  # Use custom name from group config
+                        f"{group} - {gender}",  # Combine group and gender for course class
+                        group,  # Use group as gender field
+                        sorted_participants,
+                        top_count,
+                        distance
+                    ))
 
         try:
             os.makedirs(self.output_dir, exist_ok=True)
@@ -129,4 +176,65 @@ class AwardingAPI(BaseAPIHandler):
                 json.dump(result, f, ensure_ascii=False, indent=2)
             
         except Exception as e:
-            self.logger.error(f"Error in save/verify process: {str(e)}") 
+            self.logger.error(f"Error in save/verify process: {str(e)}")
+
+    def _sort_participants(self, participants: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort participants by position and race time"""
+        return sorted(
+            participants,
+            key=lambda x: (
+                float(x.get('Position', '999999')) if x.get('Position') and str(x.get('Position')).isdigit() else float('inf'),
+                float(x.get('RaceTime', '999999')) if x.get('RaceTime') and x.get('RaceTime').replace('.','',1).isdigit() else float('inf')
+            )
+        )
+
+    def _group_by_gender(self, participants: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Group participants by gender"""
+        groups = {}
+        for participant in participants:
+            gender = self._translate_gender(participant.get('dzimums', ''))
+            if gender not in groups:
+                groups[gender] = []
+            groups[gender].append(participant)
+        return groups
+
+    def _group_by_courseclass(self, participants: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Group participants by CourseClass"""
+        groups = {}
+        for participant in participants:
+            course_class = participant.get('CourseClass', 'Unknown')
+            if course_class not in groups:
+                groups[course_class] = []
+            groups[course_class].append(participant)
+        return groups
+
+    def _create_group_data(self, group_name: str, course_class: str, gender: str, participants: List[Dict[str, Any]], top_count: int, distance: str) -> Dict[str, Any]:
+        """Create a group data entry with specified number of top participants"""
+        group_key = f"{distance}_{course_class}"
+        group_config = self.group_configs.get(group_key, {})
+        custom_name = group_config.get('name', group_name)
+        print(f"Creating group data for {custom_name} with gender {gender} and group name: {group_name}")
+
+        group_data = {
+            'group1': custom_name,
+            'subgroup1': course_class
+        }
+
+        for i in range(1, top_count + 1):
+            if i <= len(participants):
+                participant = participants[i-1]
+                group_data[f'name{i}'] = str(participant.get('Name', ''))
+                group_data[f'image{i}'] = ''
+                group_data[f'time{i}'] = str(participant.get('RaceTime', ''))
+                group_data[f'number{i}'] = str(participant.get('dal_id', ''))
+                group_data[f'club{i}'] = str(participant.get('Club', ''))
+                group_data[f'position{i}'] = str(participant.get('Position', ''))
+            else:
+                group_data[f'name{i}'] = ''
+                group_data[f'image{i}'] = ''
+                group_data[f'time{i}'] = ''
+                group_data[f'number{i}'] = ''
+                group_data[f'club{i}'] = ''
+                group_data[f'position{i}'] = ''
+
+        return group_data

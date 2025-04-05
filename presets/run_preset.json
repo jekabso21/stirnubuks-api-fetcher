@@ -70,5 +70,13 @@
   "skola_Sievietes": {
     "name": "LVM ČEMPIONĀTS SKOLU JAUNIEŠIEM",
     "image": "https://i.imgur.com/JO5JYE5.png"
+  },
+  "lusis_Vīrieši": {
+    "name": "GARMIN LŪSIS",
+    "image": "https://i.imgur.com/vT6k3iA.png"
+  },
+  "lusis_Sievietes": {
+    "name": "GARMIN LŪSIS",
+    "image": "https://i.imgur.com/vT6k3iA.png"
   }
 }
