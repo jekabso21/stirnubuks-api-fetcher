@@ -1,0 +1,138 @@
+{
+  "posms": "",
+  "auth_key": "w70vF2zXyazkBkE9IEGMrJGGQkWCYeqHpo8t8Ydvv4mjK8",
+  "test_mode": false,
+  "update_interval": "30",
+  "selected_distances": {
+    "vavere": true,
+    "zakis": true,
+    "susurs": true,
+    "pzakis": false,
+    "vilks": false,
+    "pvavere": false,
+    "buks": true,
+    "pbuks": false,
+    "skola": false,
+    "lusis": true
+  },
+  "group_configs": {
+    "vavere_Vīrieši": {
+      "name": "STAR FM VĀVERE",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "vavere_Sievietes": {
+      "name": "STAR FM VĀVERE",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "zakis_Vīrieši": {
+      "name": "KARTE VESELĪBA ZAĶIS",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "zakis_Sievietes": {
+      "name": "KARTE VESELĪBA ZAĶIS",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "susurs_Vīrieši": {
+      "name": "GARDU MUTI SUSURS",
+      "image": "https://i.imgur.com/11S90xY.png"
+    },
+    "susurs_Sievietes": {
+      "name": "GARDU MUTI SUSURS",
+      "image": "https://i.imgur.com/11S90xY.png"
+    },
+    "pzakis_Vīrieši": {
+      "name": "KARTE VESELĪBA ZAĶIS",
+      "image": "https://i.imgur.com/tAFK4pH.png"
+    },
+    "pzakis_Sievietes": {
+      "name": "KARTE VESELĪBA ZAĶIS",
+      "image": "https://i.imgur.com/tAFK4pH.png"
+    },
+    "vilks_Vīrieši": {
+      "name": "vilks_Vīrieši",
+      "image": ""
+    },
+    "vilks_Sievietes": {
+      "name": "GARMIN FĒNIX VILKS",
+      "image": ""
+    },
+    "pvavere_Vīrieši": {
+      "name": "STAR FM VĀVERE",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "pvavere_Sievietes": {
+      "name": "STAR FM VĀVERE",
+      "image": "https://i.imgur.com/Pvxw2P7.png"
+    },
+    "buks_Vīrieši": {
+      "name": "VENDEN STIRNU BUKS",
+      "image": "https://i.imgur.com/NGfHjGD.png"
+    },
+    "buks_Sievietes": {
+      "name": "VENDEN STIRNU BUKS",
+      "image": "https://i.imgur.com/NGfHjGD.png"
+    },
+    "pbuks_Vīrieši": {
+      "name": "VENDEN STIRNU BUKS",
+      "image": "https://i.imgur.com/NGfHjGD.png"
+    },
+    "pbuks_Sievietes": {
+      "name": "VENDEN STIRNU BUKS",
+      "image": "https://i.imgur.com/NGfHjGD.png"
+    },
+    "skola_Vīrieši": {
+      "name": "LVM ČEMPIONĀTS SKOLU JAUNIEŠIEM",
+      "image": "https://i.imgur.com/JO5JYE5.png"
+    },
+    "skola_Sievietes": {
+      "name": "LVM ČEMPIONĀTS SKOLU JAUNIEŠIEM",
+      "image": "https://i.imgur.com/JO5JYE5.png"
+    },
+    "lusis_Vīrieši": {
+      "name": "GARMIN LŪSIS",
+      "image": "https://i.imgur.com/vT6k3iA.png"
+    },
+    "lusis_Sievietes": {
+      "name": "GARMIN LŪSIS",
+      "image": "https://i.imgur.com/vT6k3iA.png"
+    }
+  },
+  "distance_configs": {
+    "vavere": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "zakis": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "susurs": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "pzakis": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "vilks": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "pvavere": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "buks": {
+      "group_by": "classgroups",
+      "top_count": 3
+    },
+    "pbuks": {
+      "group_by": "distance",
+      "top_count": 3
+    },
+    "skola": {
+      "group_by": "classgroups",
+      "top_count": 3
+    }
+  }
+}

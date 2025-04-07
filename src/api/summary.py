@@ -11,15 +11,12 @@ import json
 class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
     BASE_URL = "https://www.stirnubuks.lv/api/"
     
-    def __init__(self, posms: str, distances: List[str], auth_token: str, update_interval: int = 30, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
+    def __init__(self, posms: str, distances: List[str], auth_token: str, test_mode: bool = False, group_configs: Dict[str, Dict[str, Any]] = None):
         super().__init__()
         self.posms = posms
         self.distances = distances
         self.AUTH_TOKEN = auth_token
-        self.update_interval = update_interval
         self.test_mode = test_mode
-        self.is_running = False
-        self.thread = None
         self.group_configs = group_configs or {}
 
     def fetch_data(self) -> Dict[str, Any]:
@@ -43,8 +40,11 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
             "module": "results_posms",
             "auth_token": self.AUTH_TOKEN,
             "distance": distance,
-            "posms": self.posms
         }
+        
+        # Only add posms if it's not empty
+        if self.posms:
+            params["posms"] = self.posms
         
         if self.test_mode:
             params["gads"] = "2024"
@@ -70,8 +70,12 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
 
         result = []
         
+        # Sort distances to ensure consistent order
+        sorted_distances = sorted(all_data.keys())
+        
         # Process each distance's data
-        for distance, participants in all_data.items():
+        for distance in sorted_distances:
+            participants = all_data[distance]
             # First, group participants by gender
             gender_groups = {}
             for participant in participants:
@@ -80,34 +84,41 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
                     gender_groups[gender] = []
                 gender_groups[gender].append(participant)
 
-            # Create one entry for each distance+gender combination
-            for gender, gender_participants in gender_groups.items():
-                group_key = str(f"{distance}_{gender}")
-                group_config = self.group_configs.get(group_key, {})
-                custom_name = group_config.get('name', group_key)
-                image_path = group_config.get('image', '')
-                
-                # Create a single object for all participants in this distance+gender
-                group_data = {
-                    'group': custom_name,
-                    'gender': gender
-                }
-                
-                # Add up to 30 participants
-                for i in range(1, 31):
-                    if i <= len(gender_participants):
-                        print(image_path)
-                        participant = gender_participants[i-1]
-                        group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
-                        group_data[f'image{i}'] = image_path
-                        race_time = participant.get('RaceTime')
-                        group_data[f'points{i}'] = str(race_time) if race_time is not None else ''
-                    else:
-                        group_data[f'name{i}'] = ''
-                        group_data[f'image{i}'] = ''  # Empty string for participant images
-                        group_data[f'points{i}'] = ''
-                
-                result.append(group_data)
+            # Process females first, then males
+            gender_order = ['Sievietes', 'Vīrieši']
+            for gender in gender_order:
+                if gender in gender_groups:
+                    gender_participants = gender_groups[gender]
+                    group_key = str(f"{distance}_{gender}")
+                    group_config = self.group_configs.get(group_key, {})
+                    custom_name = group_config.get('name', group_key)
+                    image_path = group_config.get('image', '')
+                    
+                    # Create a single object for all participants in this distance+gender
+                    group_data = {
+                        'group': custom_name,
+                        'gender': gender
+                    }
+                    
+                    # Add up to 30 participants
+                    for i in range(1, 31):
+                        if i <= len(gender_participants):
+                            participant = gender_participants[i-1]
+                            group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
+                            group_data[f'image{i}'] = image_path
+                            race_time = participant.get('RaceTime')
+                            group_data[f'time{i}'] = str(race_time) if race_time is not None else ''
+                            group_data[f'StartaNr{i}'] = f"{i}"
+                            # Add dal_id as number
+                            group_data[f'number{i}'] = str(participant.get('dal_id', ''))
+                        else:
+                            group_data[f'name{i}'] = ''
+                            group_data[f'image{i}'] = ''
+                            group_data[f'time{i}'] = ''
+                            group_data[f'StartaNr{i}'] = ''
+                            group_data[f'number{i}'] = ''
+                    
+                    result.append(group_data)
 
         try:
             os.makedirs(self.output_dir, exist_ok=True)
@@ -118,33 +129,22 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
         except Exception as e:
             self.logger.error(f"Error in save/verify process: {str(e)}")
 
-    def start_updates(self):
-        if not self.is_running:
-            self.is_running = True
-            self.thread = threading.Thread(target=self._update_loop)
-            self.thread.daemon = True
-            self.thread.start()
-
-    def stop_updates(self):
-        self.is_running = False
-        if self.thread:
-            self.thread.join()
-
-    def _update_loop(self):
-        while self.is_running:
-            try:
-                print("Updating summary results...")  # Debug print
-                all_data = self.fetch_data()
+    def fetch_and_process(self):
+        """Single fetch and process operation"""
+        try:
+            print("Fetching summary results...")  # Debug print
+            all_data = self.fetch_data()
+            
+            if all_data:
+                self.process_data(all_data)
+                self.logger.info("Summary results updated successfully")
+                print("Summary results updated successfully")
+                return True
+            else:
+                print("No data received from API")
+                return False
                 
-                if all_data:
-                    self.process_data(all_data)
-                    self.logger.info("Summary results updated successfully")
-                    print(f"Summary results updated in {self.SUMMARY_FILE}")  # Debug print
-                else:
-                    print("No data received from API")
-                
-                time.sleep(self.update_interval)
-            except Exception as e:
-                self.logger.error(f"Error in update loop: {str(e)}")
-                print(f"Error in update loop: {str(e)}")
-                time.sleep(5) 
+        except Exception as e:
+            self.logger.error(f"Error fetching summary: {str(e)}")
+            print(f"Error fetching summary: {str(e)}")
+            return False 

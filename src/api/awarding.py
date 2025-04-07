@@ -39,8 +39,11 @@ class AwardingAPI(BaseAPIHandler):
             "module": "results_posms",
             "auth_token": self.AUTH_TOKEN,
             "distance": distance,
-            "posms": self.posms
         }
+        
+        # Only add posms if it's not empty
+        if self.posms:
+            params["posms"] = self.posms
         
         if self.test_mode:
             params["gads"] = "2024"
@@ -63,7 +66,7 @@ class AwardingAPI(BaseAPIHandler):
                 return distance, data
             else:
                 print(f"Unexpected data format: {type(data)}")
-                return distance, []  # Return an empty list if the format is unexpected
+                return distance, []
 
         except Exception as e:
             self.logger.error(f"Error fetching awarding data for distance {distance}: {str(e)}")
@@ -225,14 +228,14 @@ class AwardingAPI(BaseAPIHandler):
                 participant = participants[i-1]
                 group_data[f'name{i}'] = str(participant.get('Name', ''))
                 group_data[f'image{i}'] = ''
-                group_data[f'time{i}'] = str(participant.get('RaceTime', ''))
+                group_data[f'laiks{i}'] = str(participant.get('RaceTime', ''))
                 group_data[f'number{i}'] = str(participant.get('dal_id', ''))
                 group_data[f'club{i}'] = str(participant.get('Club', ''))
                 group_data[f'position{i}'] = str(participant.get('Position', ''))
             else:
                 group_data[f'name{i}'] = ''
                 group_data[f'image{i}'] = ''
-                group_data[f'time{i}'] = ''
+                group_data[f'laiks{i}'] = ''
                 group_data[f'number{i}'] = ''
                 group_data[f'club{i}'] = ''
                 group_data[f'position{i}'] = ''

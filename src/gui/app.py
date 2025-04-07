@@ -14,6 +14,7 @@ class App:
         
         # Define available posmi and distances
         self.POSMI = {
+            '': 'None',  # Add empty option
             'veveri': 'Veveri',
             'piejuras': 'Piejuras',
             'sveikuli': 'Sveikuli',
@@ -79,7 +80,7 @@ class App:
         self.posms_dropdown = ttk.Combobox(
             params_frame, 
             textvariable=self.posms_var, 
-            values=list(self.POSMI.keys()), 
+            values=[''] + list(self.POSMI.keys()),  # Add empty string as first option
             state="readonly",
             width=30
         )
@@ -134,23 +135,12 @@ class App:
         summary_frame = ttk.Frame(control_frame)
         summary_frame.pack(side=tk.LEFT, padx=20)
         
-        self.summary_status_var = tk.StringVar(value="Summary: Stopped")
-        ttk.Label(summary_frame, textvariable=self.summary_status_var).pack(side=tk.LEFT, padx=5)
-        
-        self.start_summary_button = ttk.Button(
+        self.fetch_summary_button = ttk.Button(
             summary_frame, 
-            text="Start Summary", 
-            command=lambda: print("Start Summary clicked") or self._start_summary_updates()
+            text="Fetch Summary", 
+            command=self._fetch_summary
         )
-        self.start_summary_button.pack(side=tk.LEFT, padx=5)
-        
-        self.stop_summary_button = ttk.Button(
-            summary_frame, 
-            text="Stop Summary", 
-            command=lambda: print("Stop Summary clicked") or self._stop_summary_updates(),
-            state=tk.DISABLED
-        )
-        self.stop_summary_button.pack(side=tk.LEFT, padx=5)
+        self.fetch_summary_button.pack(side=tk.LEFT, padx=5)
 
         # Awarding Button
         self.awarding_button = ttk.Button(
@@ -430,8 +420,8 @@ class App:
         
         # Get selected distances
         selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
-        if not posms or not selected_distances or not auth_token:
-            self.status_label.config(text="Please select Posms, at least one Distance, and enter Auth Key", foreground="red")
+        if not selected_distances or not auth_token:
+            self.status_label.config(text="Please select at least one Distance and enter Auth Key", foreground="red")
             return
         
         # Reset results text
@@ -490,47 +480,43 @@ class App:
                 foreground="red"
             )
 
-    def _start_summary_updates(self):
+    def _fetch_summary(self):
+        """Fetch summary data once"""
         try:
-            interval = int(self.update_interval_var.get())
-            if interval < 5:
-                raise ValueError("Update interval must be at least 5 seconds")
-
             posms = self.posms_var.get()
             auth_token = self.auth_key_var.get()
             selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
 
-            if not posms or not selected_distances or not auth_token:
-                self.status_label.config(text="Please select Posms, at least one Distance, and enter Auth Key", foreground="red")
+            if not selected_distances or not auth_token:
+                self.status_label.config(text="Please select at least one Distance and enter Auth Key", foreground="red")
                 return
 
-            self.summary_api = SummaryAPI(
+            summary_api = SummaryAPI(
                 posms=posms,
                 distances=selected_distances,
                 auth_token=auth_token,
-                update_interval=interval,
                 test_mode=self.test_mode_var.get(),
                 group_configs=self.group_configs
             )
             
-            self.summary_api.start_updates()
-            self.summary_status_var.set("Running")
-            self.start_summary_button.config(state=tk.DISABLED)
-            self.stop_summary_button.config(state=tk.NORMAL)
-            self.status_label.config(text=f"Summary updates started - Updating summary_results.json", foreground="green")
+            # Disable button while fetching
+            self.fetch_summary_button.config(state=tk.DISABLED)
+            self.status_label.config(text="Fetching summary data...", foreground="black")
+            
+            # Fetch and process data
+            success = summary_api.fetch_and_process()
+            
+            # Re-enable button
+            self.fetch_summary_button.config(state=tk.NORMAL)
+            
+            if success:
+                self.status_label.config(text="Summary data updated successfully", foreground="green")
+            else:
+                self.status_label.config(text="Failed to fetch summary data", foreground="red")
 
-        except ValueError as e:
-            self.status_label.config(text=str(e), foreground="red")
         except Exception as e:
-            self.status_label.config(text=f"Error starting summary updates: {str(e)}", foreground="red")
-
-    def _stop_summary_updates(self):
-        if hasattr(self, 'summary_api'):
-            self.summary_api.stop_updates()
-            self.summary_status_var.set("Stopped")
-            self.start_summary_button.config(state=tk.NORMAL)
-            self.stop_summary_button.config(state=tk.DISABLED)
-            self.status_label.config(text="Summary updates stopped", foreground="green")
+            self.fetch_summary_button.config(state=tk.NORMAL)
+            self.status_label.config(text=f"Error fetching summary data: {str(e)}", foreground="red")
 
     def _fetch_awarding_results(self):
         try:
@@ -538,8 +524,8 @@ class App:
             auth_token = self.auth_key_var.get()
             selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
 
-            if not posms or not selected_distances or not auth_token:
-                self.status_label.config(text="Please select Posms, at least one Distance, and enter Auth Key", foreground="red")
+            if not selected_distances or not auth_token:
+                self.status_label.config(text="Please select at least one Distance and enter Auth Key", foreground="red")
                 return
 
             awarding_api = AwardingAPI(

@@ -31,8 +31,11 @@ class StartListAPI(BaseAPIHandler):
             "module": "results_startlist",
             "auth_token": self.AUTH_TOKEN,
             "distance": distance,
-            "posms": self.posms
         }
+        
+        # Only add posms if it's not empty
+        if self.posms:
+            params["posms"] = self.posms
         
         if self.test_mode:
             params["gads"] = "2024"
@@ -73,8 +76,12 @@ class StartListAPI(BaseAPIHandler):
 
         result = []
         
+        # Sort distances to ensure consistent order
+        sorted_distances = sorted(all_data.keys())
+        
         # Process each distance's data
-        for distance, participants in all_data.items():
+        for distance in sorted_distances:
+            participants = all_data[distance]
             # First, group participants by gender
             gender_groups = {}
             for participant in participants:
@@ -83,34 +90,42 @@ class StartListAPI(BaseAPIHandler):
                     gender_groups[gender] = []
                 gender_groups[gender].append(participant)
 
-            # Create one entry for each distance+gender combination
-            for gender, gender_participants in gender_groups.items():
-                # Get custom group name and image link from config if available
-                group_key = str(f"{distance}_{gender}")
-                group_config = self.group_configs.get(group_key, {})
-                custom_name = group_config.get('name', group_key)
-                image_path = group_config.get('image', '')
-                
-                # Create a single object for all participants in this distance+gender
-                group_data = {
-                    'group': custom_name,
-                    'gender': gender
-                }
-                
-                # Add up to 30 participants
-                for i in range(1, 31):
-                    if i <= len(gender_participants):
-                        participant = gender_participants[i-1]
-                        group_data[f'name{i}'] = str(participant.get('full_name', ''))
-                        group_data[f'image{i}'] = image_path
-                        group_data[f'number{i}'] = str(participant.get('dal_id', ''))
-                    else:
-                        # Fill empty slots if we don't have enough participants
-                        group_data[f'name{i}'] = ''
-                        group_data[f'image{i}'] = ''  # Empty string for participant images
-                        group_data[f'number{i}'] = ''
-                
-                result.append(group_data)
+            # Process females first, then males
+            gender_order = ['Sievietes', 'Vīrieši']
+            for gender in gender_order:
+                if gender in gender_groups:
+                    gender_participants = gender_groups[gender]
+                    # Get custom group name and image link from config if available
+                    group_key = str(f"{distance}_{gender}")
+                    group_config = self.group_configs.get(group_key, {})
+                    custom_name = group_config.get('name', group_key)
+                    image_path = group_config.get('image', '')
+                    
+                    # Create a single object for all participants in this distance+gender
+                    group_data = {
+                        'group1': custom_name,
+                        'gender1': gender
+                    }
+                    
+                    # Add up to 30 participants
+                    for i in range(1, 31):
+                        if i <= len(gender_participants):
+                            participant = gender_participants[i-1]
+                            group_data[f'name{i}'] = str(participant.get('full_name', ''))
+                            group_data[f'image{i}'] = image_path
+                            group_data[f'number{i}'] = str(participant.get('dal_id', ''))
+                            group_data[f'subgroup{i}'] = str(participant.get('grupa', ''))
+                            # Add sequential start number with dot
+                            group_data[f'StartaNr{i}'] = f"{i}"
+                        else:
+                            # Fill empty slots if we don't have enough participants
+                            group_data[f'name{i}'] = ''
+                            group_data[f'image{i}'] = ''
+                            group_data[f'number{i}'] = ''
+                            group_data[f'subgroup{i}'] = ''
+                            group_data[f'StartaNr{i}'] = ''
+                    
+                    result.append(group_data)
 
         try:
             os.makedirs(self.output_dir, exist_ok=True)
