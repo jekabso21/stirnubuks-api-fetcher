@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from api.startlist import StartListAPI
 from api.summary import SummaryAPI
-from api.awarding import AwardingAPI
+from api.awarding import fetch_and_save_awards
 import os
 import json
 
@@ -18,7 +18,9 @@ class App:
             'veveri': 'Veveri',
             'piejuras': 'Piejuras',
             'sveikuli': 'Sveikuli',
-            'smeceres': 'Smeceres'
+            'smeceres': 'Smeceres',
+            'tukums': 'Tukums',
+            'zemgale': 'Lietuva'
         }
         
         self.DISTANCES = {
@@ -142,13 +144,13 @@ class App:
         )
         self.fetch_summary_button.pack(side=tk.LEFT, padx=5)
 
-        # Awarding Button
-        self.awarding_button = ttk.Button(
-            control_frame, 
-            text="Fetch Awarding", 
-            command=lambda: print("Awarding clicked") or self._fetch_awarding_results()
+        # Awards V2 Button
+        self.awarding_v2_button = ttk.Button(
+            control_frame,
+            text="Fetch Awards V2",
+            command=self._fetch_awards_v2
         )
-        self.awarding_button.pack(side=tk.LEFT, padx=5)
+        self.awarding_v2_button.pack(side=tk.LEFT, padx=5)
 
         # Status Label
         self.status_label = ttk.Label(main_container, text="")
@@ -407,10 +409,6 @@ class App:
         # Store the configurations and update all APIs
         self.group_configs = group_configs
         
-        # If summary API is running, update its configs
-        if hasattr(self, 'summary_api') and self.summary_api:
-            self.summary_api.group_configs = group_configs
-        
         self.status_label.config(text="Group configurations saved", foreground="green")
 
     def _fetch_data(self):
@@ -518,35 +516,13 @@ class App:
             self.fetch_summary_button.config(state=tk.NORMAL)
             self.status_label.config(text=f"Error fetching summary data: {str(e)}", foreground="red")
 
-    def _fetch_awarding_results(self):
+    def _fetch_awards_v2(self):
         try:
-            posms = self.posms_var.get()
-            auth_token = self.auth_key_var.get()
-            selected_distances = [key for key, var in self.distances_vars.items() if var.get()]
-
-            if not selected_distances or not auth_token:
-                self.status_label.config(text="Please select at least one Distance and enter Auth Key", foreground="red")
-                return
-
-            awarding_api = AwardingAPI(
-                posms=posms,
-                distances=selected_distances,
-                auth_token=auth_token,
-                test_mode=self.test_mode_var.get(),
-                group_configs=self.group_configs,
-                distance_configs=self.active_distance_configs
-            )
-            
-            all_data = awarding_api.fetch_data()
-
-            if all_data:
-                awarding_api.process_data(all_data)
-                self.status_label.config(text=f"Awarding results updated in awarding_results.json", foreground="green")
-            else:
-                self.status_label.config(text="No awarding data could be fetched", foreground="red")
-
+            output_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'output'))
+            filename = fetch_and_save_awards(output_dir=output_dir)
+            self.status_label.config(text=f"Awards V2 data saved to {filename}", foreground="green")
         except Exception as e:
-            self.status_label.config(text=f"Error fetching awarding results: {str(e)}", foreground="red")
+            self.status_label.config(text=f"Failed to fetch/save Awards V2: {e}", foreground="red")
 
     def _save_distance_configs(self):
         """Save distance configurations"""

@@ -40,6 +40,7 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
             "module": "results_posms",
             "auth_token": self.AUTH_TOKEN,
             "distance": distance,
+            "limit": 100  # Increase the limit to get more participants
         }
         
         # Only add posms if it's not empty
@@ -100,23 +101,23 @@ class SummaryAPI(BaseAPIHandler):  # Renamed from LiveResultsAPI to SummaryAPI
                         'gender': gender
                     }
                     
-                    # Add up to 30 participants
-                    for i in range(1, 31):
+                    # Add up to 60 participants per group
+                    for i in range(1, 61):
                         if i <= len(gender_participants):
                             participant = gender_participants[i-1]
-                            group_data[f'name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
-                            group_data[f'image{i}'] = image_path
+                            group_data[f'Name{i}'] = str(participant.get('Name', '')) if participant.get('Name') else ''
+                            group_data[f'Image{i}'] = image_path
                             race_time = participant.get('RaceTime')
-                            group_data[f'time{i}'] = str(race_time) if race_time is not None else ''
+                            group_data[f'Time{i}'] = str(race_time) if race_time is not None else ''
                             group_data[f'StartaNr{i}'] = f"{i}"
                             # Add dal_id as number
-                            group_data[f'number{i}'] = str(participant.get('dal_id', ''))
+                            group_data[f'Number{i}'] = str(participant.get('dal_id', ''))
                         else:
-                            group_data[f'name{i}'] = ''
-                            group_data[f'image{i}'] = ''
-                            group_data[f'time{i}'] = ''
+                            group_data[f'Name{i}'] = ''
+                            group_data[f'Image{i}'] = ''
+                            group_data[f'Time{i}'] = ''
                             group_data[f'StartaNr{i}'] = ''
-                            group_data[f'number{i}'] = ''
+                            group_data[f'Number{i}'] = ''
                     
                     result.append(group_data)
 

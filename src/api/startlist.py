@@ -31,6 +31,7 @@ class StartListAPI(BaseAPIHandler):
             "module": "results_startlist",
             "auth_token": self.AUTH_TOKEN,
             "distance": distance,
+            "limit": 100  # Increase the limit to get more participants
         }
         
         # Only add posms if it's not empty
@@ -39,6 +40,11 @@ class StartListAPI(BaseAPIHandler):
         
         if self.test_mode:
             params["gads"] = "2024"
+            
+        # Print API request details
+        print(f"\nAPI Request for distance {distance}:")
+        print(f"URL: {self.BASE_URL}")
+        print(f"Parameters: {params}")
             
         try:
             response = requests.get(self.BASE_URL, params=params)
@@ -75,6 +81,7 @@ class StartListAPI(BaseAPIHandler):
             return
 
         result = []
+        total_participants = 0
         
         # Sort distances to ensure consistent order
         sorted_distances = sorted(all_data.keys())
@@ -82,6 +89,9 @@ class StartListAPI(BaseAPIHandler):
         # Process each distance's data
         for distance in sorted_distances:
             participants = all_data[distance]
+            print(f"\nProcessing distance {distance}:")
+            print(f"Total participants recovered: {len(participants)}")
+            
             # First, group participants by gender
             gender_groups = {}
             for participant in participants:
@@ -95,6 +105,9 @@ class StartListAPI(BaseAPIHandler):
             for gender in gender_order:
                 if gender in gender_groups:
                     gender_participants = gender_groups[gender]
+                    print(f"{gender} participants: {len(gender_participants)}")
+                    total_participants += len(gender_participants)
+                    
                     # Get custom group name and image link from config if available
                     group_key = str(f"{distance}_{gender}")
                     group_config = self.group_configs.get(group_key, {})
@@ -103,30 +116,32 @@ class StartListAPI(BaseAPIHandler):
                     
                     # Create a single object for all participants in this distance+gender
                     group_data = {
-                        'group1': custom_name,
-                        'gender1': gender
+                        'Group1': custom_name,
+                        'Gender1': gender
                     }
                     
-                    # Add up to 30 participants
-                    for i in range(1, 31):
+                    # Add up to 60 participants per group
+                    for i in range(1, 61):
                         if i <= len(gender_participants):
                             participant = gender_participants[i-1]
-                            group_data[f'name{i}'] = str(participant.get('full_name', ''))
-                            group_data[f'image{i}'] = image_path
-                            group_data[f'number{i}'] = str(participant.get('dal_id', ''))
-                            group_data[f'subgroup{i}'] = str(participant.get('grupa', ''))
+                            group_data[f'Name{i}'] = str(participant.get('full_name', ''))
+                            group_data[f'Image{i}'] = image_path
+                            group_data[f'Number{i}'] = str(participant.get('dal_id', ''))
+                            group_data[f'Subgroup{i}'] = str(participant.get('grupa', ''))
                             # Add sequential start number with dot
                             group_data[f'StartaNr{i}'] = f"{i}"
                         else:
                             # Fill empty slots if we don't have enough participants
-                            group_data[f'name{i}'] = ''
-                            group_data[f'image{i}'] = ''
-                            group_data[f'number{i}'] = ''
-                            group_data[f'subgroup{i}'] = ''
+                            group_data[f'Name{i}'] = ''
+                            group_data[f'Image{i}'] = ''
+                            group_data[f'Number{i}'] = ''
+                            group_data[f'Subgroup{i}'] = ''
                             group_data[f'StartaNr{i}'] = ''
                     
                     result.append(group_data)
 
+        print(f"\nTotal participants processed and saved to JSON: {total_participants}")
+        
         try:
             os.makedirs(self.output_dir, exist_ok=True)
             filepath = os.path.join(self.output_dir, "all_participants.json")
