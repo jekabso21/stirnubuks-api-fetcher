@@ -77,3 +77,4 @@ ehthumbs.db
 *.spec
 /build
 /dist
+*.exe
